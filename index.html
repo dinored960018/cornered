@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>CORNERED</title>
+<meta name="description" content="도망칠 곳 없는 1인칭 3D 복싱">
+<meta name="theme-color" content="#050507">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23050507'/><path d='M3 3 L16 16 L3 29 M29 3 L16 16 L29 29' stroke='%23e0312c' stroke-width='4' fill='none'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./css/style.css">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<section id="home" class="ov home" hidden>
+  <div class="logo">
+    <h1>CORNERED</h1>
+    <p>등 뒤는 로프다</p>
+  </div>
+  <nav class="menu">
+    <button id="btnGauntlet" class="primary">도장 깨기<small>6명을 차례로 쓰러뜨린다</small></button>
+    <button id="btnSingle">단판 승부<small>상대와 난이도를 고른다</small></button>
+    <button id="btnHow" class="ghost">조작법</button>
+  </nav>
+</section>
+
+<section id="how" class="ov how" hidden>
+  <h2>조작법</h2>
+  <div class="how-grid">
+    <article>
+      <h3>때리기</h3>
+      <ul>
+        <li><kbd>A</kbd> 왼손</li>
+        <li><kbd>D</kbd> 오른손</li>
+        <li><kbd>Space</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 훅</li>
+        <li><kbd>S</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 어퍼컷</li>
+        <li><kbd>W</kbd>+<kbd>A</kbd>/<kbd>D</kbd> 몸통</li>
+        <li><kbd>F</kbd> 복서별 필살기</li>
+        <li><kbd>Esc</kbd> 일시 정지 · <kbd>M</kbd> 소리</li>
+      </ul>
+      <p>조합 키는 펀치 직후에 눌러도 먹힙니다. 앞손은 빠른 잽, 뒷손은 무거운 스트레이트입니다.</p>
+    </article>
+    <article>
+      <h3>피하기</h3>
+      <ul>
+        <li><kbd>Q</kbd> <kbd>E</kbd> 좌우 위빙</li>
+        <li><kbd>마우스</kbd> 또는 <kbd>←</kbd><kbd>→</kbd> 머리 좌우</li>
+        <li><kbd>S</kbd> 숙이기</li>
+        <li><kbd>W</kbd> 가드</li>
+        <li><kbd>R</kbd> 앞으로 <kbd>C</kbd> 뒤로</li>
+      </ul>
+      <p>상대 주먹은 맞기 직전까지 내 머리를 따라옵니다. <b>일찍 움직이면 맞고, 끝까지 보고 움직여야 피합니다.</b></p>
+    </article>
+    <article>
+      <h3>무엇으로 무엇을 피하나</h3>
+      <ul class="plain">
+        <li><b>잽·스트레이트</b> 좌우 위빙</li>
+        <li><b>훅</b> 숙이기, 또는 오는 반대쪽으로 빠지기. 오는 쪽으로 가면 더 아픕니다</li>
+        <li><b>어퍼컷</b> 좌우 위빙. 숙이면 더 아픕니다</li>
+        <li><b>몸통</b> 못 피합니다. 가드하거나 뒤로 빠지세요</li>
+      </ul>
+      <p>피한 직후 때리면 <b>1.6배 카운터</b>. 맞기 직전에 가드하면 <b>패리</b>로 상대가 굳습니다. 코너에 몰리면 20% 더 아프니 <kbd>R</kbd>로 밀고 나오세요.</p>
+    </article>
+  </div>
+  <button id="howBack" class="back">돌아가기</button>
+</section>
+
+<section id="select" class="ov select" hidden>
+  <h2 id="selTitle">복서 선택</h2>
+  <div class="sel-row">
+    <ol id="selList" class="sel-list"></ol>
+    <div class="sel-spacer"></div>
+    <aside class="sel-info">
+      <p id="selNick" class="nick"></p>
+      <h3 id="selName"></h3>
+      <p id="selBlurb"></p>
+      <dl id="selBars" class="bars"></dl>
+      <p class="sp"><b id="selSpName"></b><span id="selSpDesc"></span></p>
+    </aside>
+  </div>
+  <div class="sel-foot">
+    <button id="selBack" class="back">돌아가기</button>
+    <div id="selLevels" class="levels" hidden></div>
+    <button id="selGo" class="primary">이 복서로</button>
+  </div>
+</section>
+
+<section id="hud" class="hud" hidden>
+  <div class="bars-top">
+    <div class="pl"><b id="hudP"></b><div class="bar hp"><i id="hpPw" class="wash"></i><i id="hpP"></i></div><div class="bar st"><i id="stP"></i></div><div id="spP" class="sp-chip"></div></div>
+    <div class="clock"><span id="hudRound"></span><b id="hudClock"></b></div>
+    <div class="pr"><b id="hudO"></b><div class="bar hp"><i id="hpOw" class="wash"></i><i id="hpO"></i></div><div class="bar st"><i id="stO"></i></div></div>
+  </div>
+  <div id="kds" class="kds"></div>
+  <div id="announce" class="announce"></div>
+  <div id="popup" class="popup"></div>
+  <div id="taunt" class="taunt"></div>
+  <div id="corner" class="corner">코너</div>
+  <div id="countBox" class="count" hidden>
+    <b id="countNum"></b>
+    <p id="countMsg"></p>
+    <div id="countGauge" class="bar gauge"><i id="countFill"></i></div>
+  </div>
+  <div id="keys" class="keys">
+    <span><kbd>A</kbd><kbd>D</kbd> 펀치</span><span><kbd>Space</kbd>+ 훅</span><span><kbd>S</kbd>+ 어퍼</span><span><kbd>W</kbd> 가드</span><span><kbd>Q</kbd><kbd>E</kbd> 위빙</span><span><kbd>R</kbd><kbd>C</kbd> 앞뒤</span><span><kbd>F</kbd> 필살기</span>
+  </div>
+</section>
+
+<section id="pause" class="ov pause" hidden>
+  <h2>일시 정지</h2>
+  <button id="pauseResume" class="primary">계속하기</button>
+  <button id="pauseQuit" class="back">그만두기</button>
+</section>
+
+<section id="result" class="ov result" hidden>
+  <h2 id="resTitle"></h2>
+  <p id="resHow"></p>
+  <table id="resStats"></table>
+  <div class="res-btns">
+    <button id="resNext" class="primary"></button>
+    <button id="resMenu" class="back">메뉴로</button>
+  </div>
+</section>
+
+<button id="mute" class="mute" hidden>소리 켬</button>
+<div id="mobile" class="mobile" hidden>이 게임은 키보드로 합니다. PC에서 열어 주세요.</div>
+<div id="fatal" class="mobile" hidden>이 브라우저에서 3D를 켤 수 없습니다. 최신 Chrome이나 Edge에서 열어 주세요.</div>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

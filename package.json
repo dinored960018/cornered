@@ -1,0 +1,13 @@
+{
+  "name": "cornered",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "1인칭 3D 복싱",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test test/fight.test.js",
+    "balance": "node scripts/balance.mjs"
+  },
+  "license": "MIT"
+}
