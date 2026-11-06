@@ -847,14 +847,20 @@ export class Rig {
     // 머리는 항상 상대를 본다
     const hw = this.head.getWorldPosition(this.headWorld);
     const target = o.target;
-    const tl = this.neck.worldToLocal(target.clone());
+    // 목이 이미 돌아간 상태를 기준으로 다시 재면 각도가 프레임마다 왔다 갔다 한다.
+    // 그래서 목의 부모(상체) 기준으로 재고, 부드럽게 따라가게 한다.
+    const tl = this.spine.worldToLocal(target.clone()).sub(this.neck.position);
     const yaw = Math.atan2(tl.x, tl.z);
     const pitch = -Math.atan2(tl.y - this.head.position.y, Math.hypot(tl.x, tl.z));
+    const nf = 1 - Math.exp(-dt * 12);
+    P.yawS = (P.yawS ?? yaw) + (yaw - (P.yawS ?? yaw)) * nf;
+    P.pitchS = (P.pitchS ?? pitch) + (pitch - (P.pitchS ?? pitch)) * nf;
     this.neck.rotation.set(
-      Math.max(-0.6, Math.min(0.6, pitch)) * (1 - dn * 0.8) + s.x * 1.5,
-      Math.max(-1, Math.min(1, yaw)) * (1 - dn * 0.8) + s.y * 1.6,
+      Math.max(-0.6, Math.min(0.6, P.pitchS)) * (1 - dn * 0.8) + s.x * 1.5,
+      Math.max(-1, Math.min(1, P.yawS)) * (1 - dn * 0.8) + s.y * 1.6,
       -hx * 0.4 + s.z * 1.4
     );
+    this.neck.updateMatrixWorld(true);
     // 눈동자 추적
     const hl = this.head.worldToLocal(target.clone());
     for (const e of this.headParts.eyes) {

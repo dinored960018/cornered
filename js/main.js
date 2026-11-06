@@ -1,7 +1,8 @@
 // 화면 전환, 입력, 카메라, 그리고 압박 연출 전부.
 import * as THREE from 'three';
 import { BOXERS, LEVELS, byId } from './roster.js';
-import { createFight, stepFight, drainEvents, emptyInput, cornered, ROUNDS, COUNT_STEP, CORNER, LIM } from './fight.js';
+import { createFight, stepFight, drainEvents, emptyInput, cornered, updateHead, ROUNDS, COUNT_STEP, CORNER, LIM } from './fight.js';
+import { HostLink, GuestLink } from './net.js';
 import { Rig, PlayerArms } from './rig.js';
 import { buildWorld, updateWorld, Particles, Post } from './world.js';
 import { Sound } from './audio.js';
@@ -86,7 +87,8 @@ const app = {
   intro: null,
   heartT: 0, breathT: 0, breathIn: false, stareT: 0, tauntT: 0, lastHp: [1, 1], keysT: 0,
   sel: { step: 'player', index: 0, player: null, opp: null, level: 'normal', kind: 'gauntlet', spin: 0, shown: null },
-  lean: 0, leanMouse: 0, mouseX: 0, mouseY: 0, mashLast: null,
+  lean: 0, leanMouse: 0, mouseX: 0, mouseY: 0, mashLast: null, weaveAt: -9,
+  net: null,             // 온라인이면 { role:'host'|'guest', link, ... }
 };
 
 /* ---------- 입력 ---------- */
@@ -95,28 +97,21 @@ let frameInput = emptyInput();
 const consume = () => { const i = frameInput; frameInput = emptyInput(); return i; };
 const PREVENT = new Set(['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab']);
 
-// 키 배치 두 가지. 한 손은 움직임, 다른 손은 주먹. Ctrl은 Ctrl+W로 창이 닫혀서 쓰지 않는다.
-const SHIFT = ['ShiftLeft', 'ShiftRight'];
+// 키 배치 두 가지. 키는 다섯 개만: 피하기, 숙이기, 가드, 주먹 두 개, 필살기.
+// 앞뒤 이동은 자동이고, 훅·어퍼는 상황에 따라 저절로 나간다 (피하면서 치면 훅, 숙인 채 치면 어퍼).
+// Ctrl은 Ctrl+W로 창이 닫혀서 쓰지 않는다.
 export const SCHEMES = {
   a: {
-    name: 'A', desc: 'WASD로 움직이고 HJKL로 때리기',
-    left: ['KeyA'], right: ['KeyD'], duck: ['KeyS'], fwd: ['KeyW'], back: SHIFT, guard: ['Space'], special: ['KeyE'], body: [],
-    punch: { KeyH: ['L', null], KeyJ: ['R', null], KeyK: ['L', 'hook'], KeyL: ['R', 'hook'] },
-    legend: [
-      [['W'], '앞으로'], [['A', 'D'], '좌우 위빙'], [['S'], '숙이기'], [['Shift'], '뒤로'],
-      [['H', 'J'], '왼손 · 오른손'], [['K', 'L'], '왼훅 · 오른훅'], [['S', '+', 'H/J'], '어퍼'],
-      [['Space'], '가드'], [['Space', '+', 'H/J'], '몸통'], [['E'], '필살기'],
-    ],
+    name: 'A', desc: 'WASD + J K L',
+    left: ['KeyA'], right: ['KeyD'], duck: ['KeyS'], guard: ['KeyW'], special: ['KeyL'],
+    punch: { KeyJ: 'L', KeyK: 'R' },
+    legend: [[['A', 'D'], '피하기'], [['S'], '숙이기'], [['W'], '가드'], [['J', 'K'], '왼손 · 오른손'], [['L'], '필살기']],
   },
   b: {
-    name: 'B', desc: '방향키로 움직이고 QWER로 때리기',
-    left: ['ArrowLeft'], right: ['ArrowRight'], duck: ['ArrowDown'], fwd: ['ArrowUp'], back: SHIFT, guard: ['Space'], special: ['KeyD'], body: ['KeyF'],
-    punch: { KeyQ: ['L', null], KeyW: ['R', null], KeyE: ['L', 'hook'], KeyR: ['R', 'hook'] },
-    legend: [
-      [['↑'], '앞으로'], [['←', '→'], '좌우 위빙'], [['↓'], '숙이기'], [['Shift'], '뒤로'],
-      [['Q', 'W'], '왼손 · 오른손'], [['E', 'R'], '왼훅 · 오른훅'], [['↓', '+', 'Q/W'], '어퍼'],
-      [['Space'], '가드'], [['F'], '몸통 (또는 Space+Q/W)'], [['D'], '필살기'],
-    ],
+    name: 'B', desc: '방향키 + Z X C',
+    left: ['ArrowLeft'], right: ['ArrowRight'], duck: ['ArrowDown'], guard: ['ArrowUp'], special: ['KeyC'],
+    punch: { KeyZ: 'L', KeyX: 'R' },
+    legend: [[['←', '→'], '피하기'], [['↓'], '숙이기'], [['↑'], '가드'], [['Z', 'X'], '왼손 · 오른손'], [['C'], '필살기']],
   },
 };
 let scheme = 'a';
@@ -145,16 +140,16 @@ function setScheme(id) {
   applyScheme();
 }
 
-function punchPress(hand, mod) {
+function punchPress(hand) {
   if (app.s?.phase === 'count') {
     // 프레임이 느려도 연타를 잃지 않게 횟수로 센다
     if (app.mashLast !== hand) { frameInput.mash = Number(frameInput.mash) + 1; app.mashLast = hand; }
     return;
   }
-  const sc = SC();
-  let m = mod;
-  if (!m && held(sc.duck)) m = 'upper';
-  else if (!m && held(sc.guard)) m = 'body';
+  // 숙인 채 치면 어퍼, 피하는 중이거나 막 피했으면 훅
+  let m = null;
+  if (held(SC().duck)) m = 'upper';
+  else if (app.time - app.weaveAt < 0.4) m = 'hook';
   frameInput.punch = { hand, mod: m };
 }
 
@@ -165,23 +160,20 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'KeyM') $('mute').click();
   if (app.mode === 'select') { selectKey(e); return; }
-  if (app.mode === 'intro' && (e.code === 'Space' || e.code === 'Enter')) { app.intro.t = Math.max(app.intro.t, app.intro.len - 0.6); return; }
+  if (app.mode === 'intro' && !app.net && (e.code === 'Space' || e.code === 'Enter')) { app.intro.t = Math.max(app.intro.t, app.intro.len - 0.6); return; }
   if (app.mode !== 'fight') return;
   if (e.code === 'Escape' || e.code === 'KeyP') { setPause(!app.paused); return; }
   if (app.paused) return;
   const sc = SC();
   const p = sc.punch[e.code];
-  if (p) punchPress(p[0], p[1]);
-  else if (has(sc.body, e.code)) { app.bodyHand = app.bodyHand === 'L' ? 'R' : 'L'; punchPress(app.bodyHand, 'body'); }
-  else if (has(sc.duck, e.code)) frameInput.upgrade = 'upper'; // 펀치 직후 숙이면 어퍼로 바뀐다
+  if (p) punchPress(p);
   else if (has(sc.special, e.code)) frameInput.special = true;
-  else if (has(sc.fwd, e.code)) frameInput.step = 1;
-  else if (has(sc.back, e.code)) frameInput.step = -1;
+  else if (has(sc.left, e.code) || has(sc.right, e.code)) app.weaveAt = app.time;
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => {
   keys.clear();
-  if (app.mode === 'fight' && !app.paused) setPause(true);
+  if (app.mode === 'fight' && !app.paused && !app.net) setPause(true);
 });
 addEventListener('mousemove', (e) => {
   app.mouseX = (e.clientX / innerWidth) * 2 - 1;
@@ -205,10 +197,11 @@ document.addEventListener('pointerlockchange', () => {
 
 /* ---------- 메뉴 ---------- */
 const show = (id) => {
-  for (const s of ['home', 'how', 'select', 'hud', 'pause', 'result']) $(s).hidden = s !== id;
+  for (const s of ['home', 'how', 'select', 'hud', 'pause', 'result', 'online']) $(s).hidden = s !== id;
   $('mute').hidden = id === 'hud';
 };
 function toHome() {
+  netLeave();
   document.exitPointerLock?.();
   app.mode = 'home';
   app.s = null;
@@ -226,6 +219,13 @@ function toHome() {
 
 $('btnGauntlet').onclick = () => openSelect('gauntlet');
 $('btnSingle').onclick = () => openSelect('single');
+$('btnOnline').onclick = () => hostRoom();
+$('onBack').onclick = () => toHome();
+$('onCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText($('onUrl').value); } catch { $('onUrl').select(); document.execCommand?.('copy'); }
+  $('onCopy').textContent = '복사했어요';
+  setTimeout(() => { $('onCopy').textContent = '링크 복사'; }, 1600);
+};
 $('btnHow').onclick = () => { app.mode = 'how'; show('how'); };
 $('btnKeys').onclick = () => { setScheme(scheme === 'a' ? 'b' : 'a'); $('btnKeys').blur(); };
 document.querySelectorAll('#howSchemes button').forEach((b) => { b.onclick = () => setScheme(b.dataset.id); });
@@ -246,6 +246,8 @@ function openSelect(kind) {
   sel.player = null;
   sel.index = 0;
   sel.spin = 0;
+  if (kind === 'online' && app.net) app.net.myPick = null;
+  $('selGo').disabled = false;
   show('select');
   buildSelectList();
   applySelect();
@@ -279,7 +281,7 @@ function applySelect() {
     bt.classList.toggle('on', i === sel.index);
     bt.disabled = sel.step === 'opp' && BOXERS[i].id === sel.player;
   });
-  $('selTitle').textContent = sel.step === 'player' ? '내 복서' : '상대';
+  $('selTitle').textContent = sel.kind === 'online' ? (app.net?.myPick ? '상대가 고르는 중…' : '내 복서 · 온라인') : sel.step === 'player' ? '내 복서' : '상대';
   $('selNick').textContent = `"${b.nick}"`;
   $('selName').textContent = b.name;
   $('selBlurb').textContent = b.blurb;
@@ -299,7 +301,7 @@ function applySelect() {
     bars.append(dt, dd);
   }
   $('selLevels').hidden = sel.step !== 'opp' && !(sel.kind === 'gauntlet');
-  if (sel.kind === 'gauntlet') $('selLevels').hidden = true;
+  if (sel.kind !== 'single') $('selLevels').hidden = true;
   $('selLevels').querySelectorAll('button').forEach((bt) => bt.classList.toggle('on', bt.dataset.id === sel.level));
   $('selGo').textContent = sel.step === 'player' ? '이 복서로' : '시작';
   if (sel.shown !== b.id) {
@@ -333,6 +335,7 @@ $('selBack').onclick = () => {
 $('selGo').onclick = () => {
   const sel = app.sel;
   const b = BOXERS[sel.index];
+  if (sel.kind === 'online') { if (app.net && !app.net.myPick) netPick(b.id); return; }
   if (sel.step === 'player') {
     sel.player = b.id;
     if (sel.kind === 'gauntlet') {
@@ -352,8 +355,173 @@ $('selGo').onclick = () => {
   startFight();
 };
 
+
+/* ---------- 온라인 대전 ----------
+ * 방장 브라우저가 경기를 돌리고(방장 = 0번, 손님 = 1번), 손님은 입력과 자기 머리 위치를 보낸다.
+ * 방장은 초당 30번 경기 상태와 이벤트를 보낸다. 손님 화면은 링을 180도 돌려 자기가 0번인 것처럼 본다.
+ * 피하기는 손님 쪽 머리 위치를 그대로 믿는다. 그래야 지연이 있어도 피한 게 피한 걸로 된다.
+ */
+const ONCE_KEYS = ['punch', 'upgrade', 'special', 'step'];
+const netFresh = () => ({ myPick: null, peerPick: null, rIn: emptyInput(), rOnce: {}, rHead: null, sendT: 0, evq: [], head: { x: 0, y: 0, vx: 0, vy: 0 }, hacc: 0, inT: 0 });
+const inviteUrl = (code) => `${location.origin}${location.pathname}?r=${code}`;
+
+function showOnline(msg, url) {
+  app.mode = 'online';
+  show('online');
+  $('onMsg').textContent = msg;
+  $('onLinkRow').hidden = !url;
+  $('onUrl').value = url || '';
+}
+function netLeave() {
+  if (!app.net) return;
+  app.net.link.close();
+  app.net = null;
+}
+function onNetDrop() {
+  app.net = null;
+  toHome();
+  showOnline('상대와 연결이 끊겼어요.', '');
+}
+async function hostRoom() {
+  netLeave();
+  const link = new HostLink();
+  app.net = { role: 'host', link, ...netFresh() };
+  link.onmessage = onNet;
+  link.onclose = onNetDrop;
+  showOnline('방을 만드는 중…', '');
+  try {
+    const code = await link.open(() => { link.send({ t: 'hi' }); openSelect('online'); });
+    if (app.net?.link !== link) return;
+    showOnline('이 링크를 친구에게 보내세요. 친구가 들어오면 바로 복서를 고릅니다.', inviteUrl(code));
+  } catch (e) {
+    if (app.net?.link === link) { netLeave(); showOnline(`방을 만들지 못했어요. (${e?.type || e?.message || e}) 잠시 뒤 다시 해 주세요.`, ''); }
+  }
+}
+async function joinRoom(code) {
+  netLeave();
+  const link = new GuestLink();
+  app.net = { role: 'guest', link, ...netFresh() };
+  link.onmessage = onNet;
+  link.onclose = onNetDrop;
+  showOnline(`방 ${code}에 들어가는 중…`, '');
+  try {
+    await link.join(code);
+    if (app.net?.link !== link) return;
+    openSelect('online');
+  } catch {
+    if (app.net?.link === link) { netLeave(); showOnline('방을 찾지 못했어요. 링크가 맞는지, 친구가 아직 방에 있는지 확인해 주세요.', ''); }
+  }
+}
+function netPick(id) {
+  const N = app.net;
+  N.myPick = id;
+  N.link.send({ t: 'pick', id });
+  $('selTitle').textContent = '상대가 고르는 중…';
+  $('selGo').disabled = true;
+  netMaybeStart();
+}
+function netMaybeStart() {
+  const N = app.net;
+  if (N.role !== 'host' || !N.myPick || !N.peerPick) return;
+  N.link.send({ t: 'start', host: N.myPick, guest: N.peerPick });
+  netStart(N.myPick, N.peerPick);
+}
+function netStart(me, op) {
+  const N = app.net;
+  Object.assign(N, netFresh(), { myPick: null, peerPick: null });
+  $('selGo').disabled = false;
+  app.run = { kind: 'online', player: me, order: [op], stage: 0 };
+  startFight();
+}
+function onNet(m) {
+  const N = app.net;
+  if (!N) return;
+  switch (m.t) {
+    case 'pick': N.peerPick = m.id; netMaybeStart(); break;
+    case 'start': if (N.role === 'guest') netStart(m.guest, m.host); break;
+    case 'i': {
+      // 손님 입력: 누르고 있는 건 최신 값으로, 한 번 누른 건 다음 틱까지 모아 둔다
+      N.rIn = { ...emptyInput(), ...m.c };
+      for (const k of ONCE_KEYS) if (m.o[k]) N.rOnce[k] = m.o[k];
+      if (m.o.mash) N.rOnce.mash = (N.rOnce.mash || 0) + m.o.mash;
+      N.rHead = m.h;
+      break;
+    }
+    case 's': if (N.role === 'guest' && app.s) applySnap(m.s, m.ev); break;
+    case 'bye': onNetDrop(); break;
+    default:
+  }
+}
+function packFight(s) {
+  return {
+    phase: s.phase, round: s.round, clock: s.clock, rest: s.rest, pa: s.pa, pb: s.pb, count: s.count, result: s.result,
+    f: s.f.map(({ def, level, ai, ...o }) => o),
+  };
+}
+const swapWho = (e) => {
+  const o = { ...e };
+  for (const k of ['who', 'by', 'winner']) if (typeof o[k] === 'number') o[k] = 1 - o[k];
+  return o;
+};
+function applySnap(p, ev) {
+  const s = app.s, N = app.net;
+  const [host, guest] = p.f;
+  Object.assign(s.f[0], guest, { index: 0, head: N.head });
+  Object.assign(s.f[1], host, { index: 1 });
+  s.phase = p.phase; s.round = p.round; s.clock = p.clock; s.rest = p.rest;
+  if (app.mode !== 'intro') { s.pa = -p.pb; s.pb = -p.pa; }
+  s.count = p.count ? { ...p.count, who: 1 - p.count.who } : null;
+  s.result = p.result ? { ...p.result, winner: 1 - p.result.winner } : null;
+  if (app.mode === 'fight' || app.mode === 'over') for (const e of ev) handleEvent(swapWho(e));
+}
+function netFrame(realDt, base, inp) {
+  const N = app.net, s = app.s;
+  if (N.role === 'host') {
+    app.acc += realDt;
+    let once = true, g = 0;
+    while (app.acc >= SIM && g++ < 20) {
+      app.acc -= SIM;
+      const blank = { punch: null, upgrade: null, special: false, step: 0, mash: false };
+      const i1 = once ? { ...N.rIn, ...N.rOnce } : { ...N.rIn, ...blank };
+      if (once) N.rOnce = {};
+      stepFight(s, SIM, once ? base : { ...base, ...blank }, i1);
+      if (N.rHead) { s.f[1].head.x = N.rHead.x; s.f[1].head.y = N.rHead.y; }
+      once = false;
+    }
+    if (once) restoreInput(inp);
+    const ev = drainEvents(s);
+    for (const e of ev) handleEvent(e);
+    N.evq.push(...ev);
+    N.sendT -= realDt;
+    if (N.sendT <= 0 || ev.length) {
+      N.sendT = 1 / 30;
+      N.link.send({ t: 's', s: packFight(s), ev: N.evq });
+      N.evq = [];
+    }
+    return;
+  }
+  // 손님: 내 머리는 바로 움직이고(지연 없이), 입력은 방장에게 보낸다
+  const me = s.f[0];
+  N.hacc += realDt;
+  while (N.hacc >= SIM) {
+    N.hacc -= SIM;
+    const f = { def: me.def, st: me.st, stun: me.stun, index: 0, head: N.head };
+    updateHead(s, f, me.stun > 0 || s.phase !== 'fight' ? { weave: 0, lean: 0, duck: false } : base, SIM);
+  }
+  me.head = N.head;
+  const o = {};
+  for (const k of ONCE_KEYS) if (inp[k]) o[k] = inp[k];
+  if (inp.mash) o.mash = Number(inp.mash);
+  N.inT -= realDt;
+  if (Object.keys(o).length || N.inT <= 0) {
+    N.inT = 1 / 60;
+    N.link.send({ t: 'i', c: { guard: base.guard, duck: base.duck, weave: base.weave, lean: base.lean, walk: base.walk }, o, h: { x: N.head.x, y: N.head.y } });
+  }
+}
+
 /* ---------- 경기 시작 ---------- */
 function levelFor(run) {
+  if (run.kind === 'online') return null;
   if (run.kind === 'single') return run.level;
   return run.stage < 2 ? 'easy' : run.stage < 5 ? 'normal' : 'hell';
 }
@@ -362,6 +530,7 @@ function startFight() {
   const pl = byId(run.player);
   const op = byId(run.order[run.stage]);
   const s = createFight({ player: pl, opponent: op, level: levelFor(run), seed: (Math.random() * 1e9) | 0 });
+  const lvName = run.kind === 'online' ? '온라인' : LEVELS[levelFor(run)].name;
   app.s = s;
   hideAll();
   app.rig = getRig(op.id);
@@ -381,7 +550,7 @@ function startFight() {
   app.leanMouse = 0;
   show('hud');
   $('hudP').textContent = pl.name;
-  $('hudO').textContent = `${op.name} · ${LEVELS[levelFor(run)].name}`;
+  $('hudO').textContent = `${op.name} · ${lvName}`;
   $('keys').classList.remove('gone');
   app.keysT = 24;
   $('countBox').hidden = true;
@@ -389,7 +558,7 @@ function startFight() {
   snd.setCrowd(0.12);
   $('vsP').textContent = pl.name; $('vsPn').textContent = `"${pl.nick}"`;
   $('vsO').textContent = op.name; $('vsOn').textContent = `"${op.nick}"`;
-  $('vsNote').textContent = `${LEVELS[levelFor(run)].name} · ${run.kind === 'gauntlet' ? `도장 깨기 ${run.stage + 1} / ${run.order.length}` : '단판 승부'} · Space 건너뛰기`;
+  $('vsNote').textContent = run.kind === 'online' ? '온라인 대전' : `${lvName} · ${run.kind === 'gauntlet' ? `도장 깨기 ${run.stage + 1} / ${run.order.length}` : '단판 승부'} · Space 건너뛰기`;
   $('vs').hidden = false;
   setTaunt('', 0);
 }
@@ -674,6 +843,9 @@ function showResult() {
       n.textContent = '다시 도전';
       n.onclick = () => startFight();
     }
+  } else if (run.kind === 'online') {
+    n.textContent = '한 판 더 (복서 다시 고르기)';
+    n.onclick = () => { if (app.net) openSelect('online'); else toHome(); };
   } else {
     n.textContent = '다시 하기';
     n.onclick = () => startFight();
@@ -784,24 +956,34 @@ function menuFrame(dt) {
 }
 
 function fightFrame(realDt) {
-  const s = app.s, fx = app.fx, rig = app.rig, arms = app.arms;
-  const me = s.f[0], opp = s.f[1];
+  fightSim(realDt);
+  fightView(realDt);
+}
+function fightSim(realDt) {
+  const s = app.s;
   // 슬로와 정지
   let dt = realDt;
   if (app.hitstop > 0) { app.hitstop -= realDt; dt = 0; }
   else if (app.slow > 0) { app.slow -= realDt; dt = realDt * 0.28; }
 
   // 입력 → 시뮬
-  if (app.mode === 'fight' && !app.paused && s.phase !== 'over' || (s.phase === 'over' && app.mode === 'fight')) {
+  if (app.mode === 'fight') {
+    const inp = app.paused ? (consume(), emptyInput()) : consume();
+    const live = !app.paused;
+    const weave = live ? (held(SC().right) ? 1 : 0) - (held(SC().left) ? 1 : 0) : 0;
+    if (weave) app.weaveAt = app.time;
+    const guard = live && held(SC().guard);
+    // 앞으로는 저절로 걸어 들어간다. 코너에 몰렸으면 밀고 나온다
+    const gap = s.pa - s.pb;
+    const walk = s.phase !== 'fight' || guard ? 0 : cornered(s, 0) ? 0.7 : gap > 1.0 ? 0.6 : 0;
+    const base = { ...inp, guard, duck: live && held(SC().duck), weave, lean: clamp(app.lean + app.leanMouse, -1, 1), walk };
+    if (app.net) netFrame(realDt, base, inp);
+    else localSim(s, dt, base, inp);
+  }
+}
+function localSim(s, dt, base, inp) {
+  {
     app.acc += dt;
-    const inp = consume();
-    const base = {
-      ...inp,
-      guard: held(SC().guard),
-      duck: held(SC().duck),
-      weave: (held(SC().right) ? 1 : 0) - (held(SC().left) ? 1 : 0),
-      lean: clamp(app.lean + app.leanMouse, -1, 1),
-    };
     let once = true;
     let guardN = 0;
     while (app.acc >= SIM && guardN++ < 20) {
@@ -811,8 +993,18 @@ function fightFrame(realDt) {
     }
     for (const e of drainEvents(s)) handleEvent(e);
     // 아무 틱도 안 돌았으면 입력을 되돌린다
-    if (once) { frameInput = { ...inp, ...frameInput, punch: frameInput.punch || inp.punch, upgrade: frameInput.upgrade || inp.upgrade, special: frameInput.special || inp.special, step: frameInput.step || inp.step, mash: Number(frameInput.mash) + Number(inp.mash) }; }
+    if (once) restoreInput(inp);
   }
+}
+// 아무 틱도 안 돌았으면 이번 프레임의 한 번짜리 입력을 다음 프레임으로 넘긴다
+function restoreInput(inp) {
+  frameInput = { ...inp, ...frameInput, punch: frameInput.punch || inp.punch, upgrade: frameInput.upgrade || inp.upgrade, special: frameInput.special || inp.special, step: frameInput.step || inp.step, mash: Number(frameInput.mash) + Number(inp.mash) };
+}
+
+function fightView(realDt) {
+  const s = app.s, fx = app.fx, rig = app.rig, arms = app.arms;
+  const me = s.f[0], opp = s.f[1];
+  const dt = app.hitstop > 0 ? 0 : app.slow > 0 ? realDt * 0.28 : realDt;
 
   // 마우스로 기울인 머리는 서서히 가운데로 돌아온다
   app.lean = damp(app.lean, 0, 14, realDt);
@@ -978,7 +1170,7 @@ function frame(now) {
   watchPerf(Math.min(1, rawDt));
   const realDt = Math.min(0.05, rawDt);
   last = now;
-  if (app.paused) {
+  if (app.paused && !app.net) {
     post.render(scene, camera, app.time);
     return;
   }
@@ -993,6 +1185,9 @@ function frame(now) {
 
 // 폰트와 첫 프레임 준비
 toHome();
+// 초대 링크로 들어왔으면 바로 방에 들어간다
+const roomCode = new URLSearchParams(location.search).get('r');
+if (roomCode) { history.replaceState(null, '', location.pathname); joinRoom(roomCode.toUpperCase()); }
 requestAnimationFrame(frame);
 
 // 자동 테스트와 연출 확인용

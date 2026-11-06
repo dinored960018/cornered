@@ -59,9 +59,8 @@ try {
   await key('Space', ' ', 32);
   for (let i = 0; i < 60; i++) { if (await ev(`window.__c.app.mode`) === 'fight') break; await sleep(250); }
   console.log('모드', await ev(`window.__c.app.mode`));
-  const P = [['KeyH', 'h', 72], ['KeyJ', 'j', 74]];
+  const P = [['KeyJ', 'j', 74], ['KeyK', 'k', 75]];
   const W2 = [['KeyA', 'a', 65], ['KeyD', 'd', 68]];
-  const HK = [['KeyK', 'k', 75], ['KeyL', 'l', 76]];
   const SS = ['KeyS', 's', 83];
   const t0 = Date.now();
   let i = 0, shots = 0;
@@ -75,11 +74,11 @@ try {
     if (st.phase === 'count') { await key(...P[i % 2], 15); continue; }
     const r = i % 7;
     if (r === 0 || r === 3) await key(...P[i % 2], 30);
-    else if (r === 1) await key(...HK[i % 2], 30);
+    else if (r === 1) { await down(...W2[i % 2]); await key(...P[i % 2], 30); await up(...W2[i % 2]); }
     else if (r === 2) { await down(...SS); await key(...P[i % 2], 30); await up(...SS); }
     else if (r === 4) await key(...W2[i % 2], 220);
-    else if (r === 5) await key('Space', ' ', 32, 300);
-    else await key('KeyE', 'e', 69, 30);
+    else if (r === 5) await key('KeyW', 'w', 87, 300);
+    else await key('KeyL', 'l', 76, 30);
     await sleep(70);
     if (shots < 6 && Date.now() - t0 > (shots + 1) * 5500) await shot(`play-${++shots}`);
   }
@@ -114,14 +113,17 @@ try {
     if (!ok) fail = 1;
     for (let k = 0; k < 40; k++) { if (!(await ev(`!!window.__c.app.s.f[0].punch`))) break; await sleep(80); }
   };
+  const jit = await ev(`(async()=>{const r=window.__c.app.rig;const v=[];for(let k=0;k<30;k++){await new Promise(q=>requestAnimationFrame(q));v.push(r.neck.rotation.y)}let m=0;for(let k=2;k<v.length;k++)m=Math.max(m,Math.abs(v[k]-2*v[k-1]+v[k-2]));return m})()`);
+  console.log('  목 각도 떨림(2차 차분 최대)', jit.toFixed(4), jit < 0.05 ? '확인' : '떨림');
+  if (jit >= 0.05) fail = 1;
   console.log('키 배치 확인');
-  await probe('a', ['KeyK', 'k', 75], null, 'hook');
-  await probe('a', ['KeyJ', 'j', 74], ['KeyS', 's', 83], 'upper');
-  await probe('a', ['KeyH', 'h', 72], ['Space', ' ', 32], 'body');
-  await probe('b', ['KeyQ', 'q', 81], null, 'jab');
-  await probe('b', ['KeyR', 'r', 82], null, 'hook');
-  await probe('b', ['KeyW', 'w', 87], ['ArrowDown', 'ArrowDown', 40], 'upper');
-  await probe('b', ['KeyF', 'f', 70], null, 'body');
+  await probe('a', ['KeyJ', 'j', 74], null, 'jab');
+  await probe('a', ['KeyK', 'k', 75], null, 'cross');
+  await probe('a', ['KeyJ', 'j', 74], ['KeyA', 'a', 65], 'hook');
+  await probe('a', ['KeyK', 'k', 75], ['KeyS', 's', 83], 'upper');
+  await probe('b', ['KeyZ', 'z', 90], null, 'jab');
+  await probe('b', ['KeyX', 'x', 88], ['ArrowRight', 'ArrowRight', 39], 'hook');
+  await probe('b', ['KeyX', 'x', 88], ['ArrowDown', 'ArrowDown', 40], 'upper');
   await ev(`window.__c.setScheme('a')`);
 } catch (e) {
   console.error(e);

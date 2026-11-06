@@ -83,20 +83,19 @@ while (Date.now() - t0 < SECONDS * 1000) {
   // 화면 연출을 보려고 중간에 상황을 만든다: 코너에 몰림 → 다운
   if (staged === 0 && el > SECONDS * 0.4) { staged = 1; await ev(`(()=>{const s=window.__c.app.s;s.pa=3.3;s.pb=2.4;s.f[0].hp=s.f[0].maxHp*.3;return 1})()`); }
   if (staged === 1 && el > SECONDS * 0.7) { staged = 2; await ev(`(()=>{const s=window.__c.app.s;s.f[0].hp=1;s.f[0].miracle=false;return 1})()`); }
-  if (st.phase === 'count') { await tap(i % 2 ? K.H : K.J, 15); continue; }
+  if (st.phase === 'count') { await tap(i % 2 ? K.J : K.K, 15); continue; }
   if (st.op && !st.op.done && st.op.latched) {
     if (st.op.id === 'hook') { await down(K.S); await sleep(260); await up(K.S); }
-    else if (st.op.id === 'body') { await down(K.Sp); await sleep(260); await up(K.Sp); }
+    else if (st.op.id === 'body') { await down(K.W); await sleep(260); await up(K.W); }
     else { const k = Math.random() < 0.5 ? K.A : K.D; await down(k); await sleep(260); await up(k); }
     continue;
   }
   if (!st.me) {
     const r = Math.random();
-    if (st.d > 1.35) await tap(K.W);
-    else if (r < 0.45) await tap(Math.random() < 0.5 ? K.H : K.J);
-    else if (r < 0.7) await tap(Math.random() < 0.5 ? K.K : K.L);
+    if (r < 0.45) await tap(Math.random() < 0.5 ? K.J : K.K);
+    else if (r < 0.7) { const w = Math.random() < 0.5 ? K.A : K.D; await down(w); await tap(K.J); await up(w); }
     else if (r < 0.82) { await down(K.S); await tap(K.J); await up(K.S); }
-    else if (r < 0.88) await tap(K.E);
+    else if (r < 0.88) await tap(K.L);
     else await sleep(120);
   }
   await sleep(40);

@@ -24,6 +24,7 @@
   <nav class="menu">
     <button id="btnGauntlet" class="primary">도장 깨기<small>6명을 차례로 쓰러뜨린다</small></button>
     <button id="btnSingle">단판 승부<small>상대와 난이도를 고른다</small></button>
+    <button id="btnOnline">친구와 대전<small>링크를 보내 1:1 온라인</small></button>
     <button id="btnKeys" class="ghost"></button>
     <button id="btnHow" class="ghost">조작법</button>
   </nav>
@@ -34,20 +35,20 @@
   <div class="how-grid">
     <article class="wide">
       <h3>키 배치</h3>
-      <div id="howSchemes" class="levels"><button data-id="a">A · WASD + HJKL</button><button data-id="b">B · 방향키 + QWER</button></div>
+      <div id="howSchemes" class="levels"><button data-id="a">A · WASD + J K L</button><button data-id="b">B · 방향키 + Z X C</button></div>
       <ul id="howKeys" class="key-cols"></ul>
-      <p>마우스로 머리를 살짝 좌우로 기울일 수도 있습니다. <kbd>Esc</kbd> 일시 정지, <kbd>M</kbd> 소리. 앞손은 빠른 잽, 뒷손은 무거운 스트레이트입니다.</p>
-      <p>상대 주먹은 맞기 직전까지 내 머리를 따라옵니다. <b>일찍 움직이면 맞고, 끝까지 보고 움직여야 피합니다.</b></p>
+      <p>앞으로는 저절로 걸어 들어갑니다. <b>피하면서 치면 훅, 숙인 채 치면 어퍼</b>가 저절로 나갑니다.</p>
+      <p>상대 주먹은 맞기 직전까지 내 머리를 따라옵니다. <b>끝까지 보고 맞기 직전에 움직여야 피합니다.</b> <kbd>Esc</kbd> 일시 정지, <kbd>M</kbd> 소리.</p>
     </article>
     <article>
       <h3>무엇으로 무엇을 피하나</h3>
       <ul class="plain">
-        <li><b>잽·스트레이트</b> 좌우 위빙</li>
-        <li><b>훅</b> 숙이기, 또는 오는 반대쪽으로 빠지기. 오는 쪽으로 가면 더 아픕니다</li>
-        <li><b>어퍼컷</b> 좌우 위빙. 숙이면 더 아픕니다</li>
-        <li><b>몸통</b> 못 피합니다. 가드하거나 뒤로 빠지세요</li>
+        <li><b>곧게 뻗는 주먹</b> 좌우로 피하기</li>
+        <li><b>옆으로 휘두르는 훅</b> 숙이기</li>
+        <li><b>올려 치는 어퍼</b> 좌우로 피하기</li>
+        <li><b>몸통</b> 가드</li>
       </ul>
-      <p>피한 직후 때리면 <b>1.6배 카운터</b>. 맞기 직전에 가드하면 <b>패리</b>로 상대가 굳습니다. 코너에 몰리면 20% 더 아프니 앞으로 밀고 나오세요.</p>
+      <p>피한 직후 때리면 <b>카운터</b>로 1.6배 아픕니다.</p>
     </article>
   </div>
   <button id="howBack" class="back">돌아가기</button>
@@ -97,6 +98,13 @@
   <div id="keys" class="keys">
     <span><kbd>A</kbd><kbd>D</kbd> 펀치</span><span><kbd>Space</kbd>+ 훅</span><span><kbd>S</kbd>+ 어퍼</span><span><kbd>W</kbd> 가드</span><span><kbd>Q</kbd><kbd>E</kbd> 위빙</span><span><kbd>R</kbd><kbd>C</kbd> 앞뒤</span><span><kbd>F</kbd> 필살기</span>
   </div>
+</section>
+
+<section id="online" class="ov online" hidden>
+  <h2>친구와 대전</h2>
+  <p id="onMsg"></p>
+  <div id="onLinkRow" class="on-link" hidden><input id="onUrl" readonly><button id="onCopy" class="primary">링크 복사</button></div>
+  <button id="onBack" class="back">돌아가기</button>
 </section>
 
 <section id="pause" class="ov pause" hidden>

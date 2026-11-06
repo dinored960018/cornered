@@ -284,7 +284,7 @@ function resolve(s, a, d, p) {
   }
   if (d.rock > 20 + d.maxHp * 0.05 && !d.buff.iron) {
     d.rock = 0;
-    d.stun = Math.max(d.stun, d.index === 0 ? 0.8 : 1.05);
+    d.stun = Math.max(d.stun, d.ai ? 1.05 : 0.8);
     d.punch = null;
     d.queue.length = 0;
     emit(s, { type: 'rocked', who: dSide });
@@ -334,7 +334,7 @@ function finish(s, winner, how) {
   emit(s, { type: 'over', winner, how });
 }
 
-function updateHead(s, f, inp, dt) {
+export function updateHead(s, f, inp, dt) {
   const corner = cornered(s, f.index);
   const reachW = WEAVE * f.def.weave * (corner ? 0.82 : 1);
   const tx = inp.weave * reachW + clamp(inp.lean, -1, 1) * 0.13;
@@ -525,19 +525,19 @@ function rise(s, c) {
   emit(s, { type: 'rise', who: c.who });
 }
 
-/** dt초 진행. input0은 사람(또는 시험용 봇), 1P 쪽 ai가 있으면 그걸 쓴다. */
-export function stepFight(s, dt, input0) {
+/** dt초 진행. input0·input1은 사람 입력(온라인이면 둘 다 사람). ai가 있는 쪽은 ai가 움직인다. */
+export function stepFight(s, dt, input0, input1) {
   s.time += dt;
   const blank = emptyInput();
   const i0 = s.f[0].ai ? aiInput(s, s.f[0], s.f[1], dt) : input0 || blank;
   if (s.phase === 'fight') {
-    const i1 = aiInput(s, s.f[1], s.f[0], dt);
+    const i1 = s.f[1].ai ? aiInput(s, s.f[1], s.f[0], dt) : input1 || blank;
     s.clock -= dt;
     tickFighter(s, s.f[0], s.f[1], i0, dt);
     if (s.phase === 'fight') tickFighter(s, s.f[1], s.f[0], i1, dt);
     if (s.phase === 'fight' && s.clock <= 0) { s.clock = 0; endRound(s); }
   } else if (s.phase === 'count') {
-    tickCount(s, [i0, blank], dt);
+    tickCount(s, [i0, s.f[1].ai ? blank : input1 || blank], dt);
   } else if (s.phase === 'rest') {
     s.rest -= dt;
     if (s.rest <= 0) nextRound(s);
