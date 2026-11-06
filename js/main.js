@@ -95,14 +95,66 @@ let frameInput = emptyInput();
 const consume = () => { const i = frameInput; frameInput = emptyInput(); return i; };
 const PREVENT = new Set(['Space', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab']);
 
-function punchPress(hand) {
+// 키 배치 두 가지. 한 손은 움직임, 다른 손은 주먹. Ctrl은 Ctrl+W로 창이 닫혀서 쓰지 않는다.
+const SHIFT = ['ShiftLeft', 'ShiftRight'];
+export const SCHEMES = {
+  a: {
+    name: 'A', desc: 'WASD로 움직이고 HJKL로 때리기',
+    left: ['KeyA'], right: ['KeyD'], duck: ['KeyS'], fwd: ['KeyW'], back: SHIFT, guard: ['Space'], special: ['KeyE'], body: [],
+    punch: { KeyH: ['L', null], KeyJ: ['R', null], KeyK: ['L', 'hook'], KeyL: ['R', 'hook'] },
+    legend: [
+      [['W'], '앞으로'], [['A', 'D'], '좌우 위빙'], [['S'], '숙이기'], [['Shift'], '뒤로'],
+      [['H', 'J'], '왼손 · 오른손'], [['K', 'L'], '왼훅 · 오른훅'], [['S', '+', 'H/J'], '어퍼'],
+      [['Space'], '가드'], [['Space', '+', 'H/J'], '몸통'], [['E'], '필살기'],
+    ],
+  },
+  b: {
+    name: 'B', desc: '방향키로 움직이고 QWER로 때리기',
+    left: ['ArrowLeft'], right: ['ArrowRight'], duck: ['ArrowDown'], fwd: ['ArrowUp'], back: SHIFT, guard: ['Space'], special: ['KeyD'], body: ['KeyF'],
+    punch: { KeyQ: ['L', null], KeyW: ['R', null], KeyE: ['L', 'hook'], KeyR: ['R', 'hook'] },
+    legend: [
+      [['↑'], '앞으로'], [['←', '→'], '좌우 위빙'], [['↓'], '숙이기'], [['Shift'], '뒤로'],
+      [['Q', 'W'], '왼손 · 오른손'], [['E', 'R'], '왼훅 · 오른훅'], [['↓', '+', 'Q/W'], '어퍼'],
+      [['Space'], '가드'], [['F'], '몸통 (또는 Space+Q/W)'], [['D'], '필살기'],
+    ],
+  },
+};
+let scheme = 'a';
+try { if (SCHEMES[localStorage.getItem('cornered.keys')]) scheme = localStorage.getItem('cornered.keys'); } catch { /* 저장 못 해도 A로 한다 */ }
+const SC = () => SCHEMES[scheme];
+const held = (codes) => codes.some((c) => keys.has(c));
+const has = (codes, code) => codes.includes(code);
+
+function legendHtml(sc, compact) {
+  return sc.legend.map(([ks, label]) => {
+    const k = ks.map((x) => (x === '+' ? '+' : `<kbd>${x}</kbd>`)).join('');
+    return compact ? `<span>${k} ${label}</span>` : `<li>${k} ${label}</li>`;
+  }).join('');
+}
+function applyScheme() {
+  const sc = SC();
+  $('keys').innerHTML = legendHtml(sc, true);
+  $('howKeys').innerHTML = legendHtml(sc, false);
+  $('btnKeys').innerHTML = `키 배치 ${sc.name}<small>${sc.desc}</small>`;
+  document.querySelectorAll('#howSchemes button').forEach((b) => b.classList.toggle('on', b.dataset.id === scheme));
+}
+function setScheme(id) {
+  scheme = id;
+  try { localStorage.setItem('cornered.keys', id); } catch { /* 무시 */ }
+  applyScheme();
+}
+
+function punchPress(hand, mod) {
   if (app.s?.phase === 'count') {
     // 프레임이 느려도 연타를 잃지 않게 횟수로 센다
     if (app.mashLast !== hand) { frameInput.mash = Number(frameInput.mash) + 1; app.mashLast = hand; }
     return;
   }
-  const mod = keys.has('Space') ? 'hook' : keys.has('KeyS') ? 'upper' : keys.has('KeyW') ? 'body' : null;
-  frameInput.punch = { hand, mod };
+  const sc = SC();
+  let m = mod;
+  if (!m && held(sc.duck)) m = 'upper';
+  else if (!m && held(sc.guard)) m = 'body';
+  frameInput.punch = { hand, mod: m };
 }
 
 addEventListener('keydown', (e) => {
@@ -116,17 +168,14 @@ addEventListener('keydown', (e) => {
   if (app.mode !== 'fight') return;
   if (e.code === 'Escape' || e.code === 'KeyP') { setPause(!app.paused); return; }
   if (app.paused) return;
-  switch (e.code) {
-    case 'KeyA': punchPress('L'); break;
-    case 'KeyD': punchPress('R'); break;
-    case 'Space': frameInput.upgrade = 'hook'; break;
-    case 'KeyS': frameInput.upgrade = 'upper'; break;
-    case 'KeyW': frameInput.upgrade = 'body'; break;
-    case 'KeyF': frameInput.special = true; break;
-    case 'KeyR': frameInput.step = 1; break;
-    case 'KeyC': frameInput.step = -1; break;
-    default:
-  }
+  const sc = SC();
+  const p = sc.punch[e.code];
+  if (p) punchPress(p[0], p[1]);
+  else if (has(sc.body, e.code)) { app.bodyHand = app.bodyHand === 'L' ? 'R' : 'L'; punchPress(app.bodyHand, 'body'); }
+  else if (has(sc.duck, e.code)) frameInput.upgrade = 'upper'; // 펀치 직후 숙이면 어퍼로 바뀐다
+  else if (has(sc.special, e.code)) frameInput.special = true;
+  else if (has(sc.fwd, e.code)) frameInput.step = 1;
+  else if (has(sc.back, e.code)) frameInput.step = -1;
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => {
@@ -177,6 +226,9 @@ function toHome() {
 $('btnGauntlet').onclick = () => openSelect('gauntlet');
 $('btnSingle').onclick = () => openSelect('single');
 $('btnHow').onclick = () => { app.mode = 'how'; show('how'); };
+$('btnKeys').onclick = () => { setScheme(scheme === 'a' ? 'b' : 'a'); $('btnKeys').blur(); };
+document.querySelectorAll('#howSchemes button').forEach((b) => { b.onclick = () => setScheme(b.dataset.id); });
+applyScheme();
 $('howBack').onclick = () => toHome();
 $('mute').onclick = () => {
   snd.init();
@@ -738,9 +790,9 @@ function fightFrame(realDt) {
     const inp = consume();
     const base = {
       ...inp,
-      guard: keys.has('KeyW'),
-      duck: keys.has('KeyS'),
-      weave: (keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0),
+      guard: held(SC().guard),
+      duck: held(SC().duck),
+      weave: (held(SC().right) ? 1 : 0) - (held(SC().left) ? 1 : 0),
       lean: clamp(app.lean + app.leanMouse, -1, 1),
     };
     let once = true;
@@ -755,9 +807,8 @@ function fightFrame(realDt) {
     if (once) { frameInput = { ...inp, ...frameInput, punch: frameInput.punch || inp.punch, upgrade: frameInput.upgrade || inp.upgrade, special: frameInput.special || inp.special, step: frameInput.step || inp.step, mash: Number(frameInput.mash) + Number(inp.mash) }; }
   }
 
-  // 화살표로 머리 좌우. 마우스 쪽은 서서히 가운데로 돌아온다
-  const arrows = (keys.has('ArrowRight') ? 1 : 0) - (keys.has('ArrowLeft') ? 1 : 0);
-  app.lean = damp(app.lean, arrows, 14, realDt);
+  // 마우스로 기울인 머리는 서서히 가운데로 돌아온다
+  app.lean = damp(app.lean, 0, 14, realDt);
   app.leanMouse = damp(app.leanMouse, 0, 1.6, realDt);
 
   // 인트로: 상대가 천천히 걸어와 코앞에 선다
@@ -935,4 +986,4 @@ toHome();
 requestAnimationFrame(frame);
 
 // 자동 테스트와 연출 확인용
-window.__c = { app, keys, perf, startFight, BOXERS, getRig, snd, post, camera, COUNT_STEP };
+window.__c = { app, keys, perf, setScheme, startFight, BOXERS, getRig, snd, post, camera, COUNT_STEP };

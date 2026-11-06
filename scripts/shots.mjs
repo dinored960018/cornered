@@ -68,6 +68,20 @@ const after = (js) => ev(`(()=>{const c=window.__c,a=c.app,s=a.s,me=s.f[0],op=s.
 
 try {
   if (on('home')) { await ev(`window.__c.app.menuRig=window.__c.BOXERS[6];window.__c.app.rig.group.visible=false;window.__c.app.rig=window.__c.getRig('tank');window.__c.app.rig.group.visible=true;1`); await settle(1800); await shot('home'); }
+  if (on('how')) {
+    await ev(`document.querySelector('#btnHow').click()`);
+    await settle(600);
+    await shot('how-a');
+    await ev(`document.querySelector('#howSchemes [data-id=b]').click()`);
+    await settle(300);
+    await shot('how-b');
+    await ev(`document.querySelector('#howSchemes [data-id=a]').click();document.querySelector('#howBack').click()`);
+  }
+  if (on('legend')) {
+    await stage('southpaw', 'tank', `a.keysT=99;document.getElementById('keys').classList.remove('gone');`);
+    await settle(1500);
+    await shot('legend');
+  }
   if (on('select')) {
     await ev(`document.querySelector('#btnGauntlet').click()`);
     await settle();

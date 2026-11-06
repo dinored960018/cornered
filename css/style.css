@@ -44,6 +44,9 @@ kbd { display: inline-block; min-width: 24px; padding: 1px 6px; margin-right: 2p
 .how-grid p { margin: 0; font-size: 14px; line-height: 1.65; color: #cfcdc6; }
 .how-grid b { color: #fff; }
 .plain li { line-height: 1.5; }
+.how-grid .wide { grid-column: span 2; }
+.how-grid .key-cols { grid-template-columns: 1fr 1fr; margin: 14px 0; }
+.how-grid .levels { margin-bottom: 4px; }
 
 /* 복서 선택: 가운데는 3D 복서가 서 있다 */
 .select { padding: 22px clamp(16px, 3vw, 44px); justify-content: space-between; align-items: stretch; background: linear-gradient(90deg, rgba(0,0,0,.76), transparent 30%, transparent 66%, rgba(0,0,0,.82)); }
@@ -131,6 +134,7 @@ kbd { display: inline-block; min-width: 24px; padding: 1px 6px; margin-right: 2p
 
 @media (max-width: 860px) {
   .how-grid { grid-template-columns: 1fr; }
+  .how-grid .wide { grid-column: auto; }
   .sel-list { width: 130px; }
   .sel-list button { font-size: 16px; padding: 7px 8px; }
   .keys { display: none; }

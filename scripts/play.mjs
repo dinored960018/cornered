@@ -51,6 +51,7 @@ try {
   await sleep(600);
   await ev(`[...document.querySelectorAll('#selList button')][3].click()`);
   await sleep(300);
+  await ev(`window.__c.setScheme('a')`);
   await ev(`document.querySelector('#selGo').click()`);
   console.log('경기 인트로', await ev(`window.__c.app.mode`));
   await sleep(1800);
@@ -58,9 +59,10 @@ try {
   await key('Space', ' ', 32);
   for (let i = 0; i < 60; i++) { if (await ev(`window.__c.app.mode`) === 'fight') break; await sleep(250); }
   console.log('모드', await ev(`window.__c.app.mode`));
-  const P = [['KeyA', 'a', 65], ['KeyD', 'd', 68]];
-  const W2 = [['KeyQ', 'q', 81], ['KeyE', 'e', 69]];
-  const SP = ['Space', ' ', 32], SS = ['KeyS', 's', 83];
+  const P = [['KeyH', 'h', 72], ['KeyJ', 'j', 74]];
+  const W2 = [['KeyA', 'a', 65], ['KeyD', 'd', 68]];
+  const HK = [['KeyK', 'k', 75], ['KeyL', 'l', 76]];
+  const SS = ['KeyS', 's', 83];
   const t0 = Date.now();
   let i = 0, shots = 0;
   while (Date.now() - t0 < SECONDS * 1000) {
@@ -73,11 +75,11 @@ try {
     if (st.phase === 'count') { await key(...P[i % 2], 15); continue; }
     const r = i % 7;
     if (r === 0 || r === 3) await key(...P[i % 2], 30);
-    else if (r === 1) { await down(...SP); await key(...P[i % 2], 30); await up(...SP); }
-    else if (r === 2) { await key(...P[i % 2], 25); await key(...SS, 30); } // 펀치 직후 S: 어퍼로 바뀌어야 한다
+    else if (r === 1) await key(...HK[i % 2], 30);
+    else if (r === 2) { await down(...SS); await key(...P[i % 2], 30); await up(...SS); }
     else if (r === 4) await key(...W2[i % 2], 220);
-    else if (r === 5) await key('KeyW', 'w', 87, 300);
-    else await key('KeyF', 'f', 70, 30);
+    else if (r === 5) await key('Space', ' ', 32, 300);
+    else await key('KeyE', 'e', 69, 30);
     await sleep(70);
     if (shots < 6 && Date.now() - t0 > (shots + 1) * 5500) await shot(`play-${++shots}`);
   }
@@ -98,6 +100,29 @@ try {
     console.log('연타', n, '회 뒤', JSON.stringify(after));
     if (after.phase !== 'fight') { console.log('일어나지 못함'); fail = 1; }
   }
+  // 키 배치별로 실제 키가 맞는 동작을 내는지
+  const probe = async (scheme, press, holdKey, want) => {
+    await ev(`(()=>{const c=window.__c,s=c.app.s;c.setScheme('${scheme}');s.phase='fight';const m=s.f[0],o=s.f[1];m.punch=null;m.stun=0;m.st=100;m.buf=null;o.ai.next=1e9;o.queue.length=0;o.punch=null;return 1})()`);
+    if (holdKey) await down(...holdKey);
+    await sleep(120);
+    await key(...press, 40);
+    let got = null;
+    for (let k = 0; k < 30 && !got; k++) { got = await ev(`window.__c.app.s.f[0].punch?.id || null`); if (!got) await sleep(60); }
+    if (holdKey) await up(...holdKey);
+    const ok = got === want;
+    console.log(`  배치 ${scheme}: ${press[1]}${holdKey ? '+' + holdKey[1] : ''} → ${got} ${ok ? '확인' : `(기대 ${want})`}`);
+    if (!ok) fail = 1;
+    for (let k = 0; k < 40; k++) { if (!(await ev(`!!window.__c.app.s.f[0].punch`))) break; await sleep(80); }
+  };
+  console.log('키 배치 확인');
+  await probe('a', ['KeyK', 'k', 75], null, 'hook');
+  await probe('a', ['KeyJ', 'j', 74], ['KeyS', 's', 83], 'upper');
+  await probe('a', ['KeyH', 'h', 72], ['Space', ' ', 32], 'body');
+  await probe('b', ['KeyQ', 'q', 81], null, 'jab');
+  await probe('b', ['KeyR', 'r', 82], null, 'hook');
+  await probe('b', ['KeyW', 'w', 87], ['ArrowDown', 'ArrowDown', 40], 'upper');
+  await probe('b', ['KeyF', 'f', 70], null, 'body');
+  await ev(`window.__c.setScheme('a')`);
 } catch (e) {
   console.error(e);
   fail = 1;
