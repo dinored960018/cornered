@@ -347,13 +347,15 @@ function paintFace(ctx, look, dmg) {
     blob(x, fx(-0.55, -0.12), fy(-0.12), 62, 50, 0x5a1f3a, 0.62 * d);
     blob(x, fx(0, -0.1), fy(-0.1), 28, 40, 0x7a1a14, 0.55 * d);
     if (dmg > 0.4) {
-      x.strokeStyle = css(0x8a0b08, 0.92);
-      x.lineWidth = 7;
+      x.strokeStyle = css(0x6a0806, 0.62);
+      x.lineWidth = 3.5;
+      x.shadowColor = 'rgba(90,6,4,.7)';
+      x.shadowBlur = 6;
       x.beginPath();
       x.moveTo(fx(-0.42, 0.3), fy(0.3));
       x.bezierCurveTo(fx(-0.47, 0.15), fy(0.15), fx(-0.4, 0.0), fy(0), fx(-0.46, -0.2), fy(-0.2));
       x.stroke();
-      x.lineWidth = 5;
+      x.lineWidth = 3;
       x.beginPath();
       x.moveTo(fx(0.05, -0.3), fy(-0.3));
       x.lineTo(fx(0.08, -0.46), fy(-0.46));
@@ -362,6 +364,7 @@ function paintFace(ctx, look, dmg) {
       x.moveTo(fx(-0.05, -0.3), fy(-0.3));
       x.lineTo(fx(-0.06, -0.52), fy(-0.52));
       x.stroke();
+      x.shadowBlur = 0;
     }
   }
 }

@@ -122,6 +122,7 @@ export const SCHEMES = {
 let scheme = 'a';
 try { if (SCHEMES[localStorage.getItem('cornered.keys')]) scheme = localStorage.getItem('cornered.keys'); } catch { /* 저장 못 해도 A로 한다 */ }
 const SC = () => SCHEMES[scheme];
+const keyLabel = (code) => code.replace(/^Key/, '').replace(/^Arrow/, '').replace('Left', '←').replace('Right', '→');
 const held = (codes) => codes.some((c) => keys.has(c));
 const has = (codes, code) => codes.includes(code);
 
@@ -282,7 +283,7 @@ function applySelect() {
   $('selNick').textContent = `"${b.nick}"`;
   $('selName').textContent = b.name;
   $('selBlurb').textContent = b.blurb;
-  $('selSpName').textContent = `F · ${b.special.name}`;
+  $('selSpName').textContent = `${keyLabel(SC().special[0])} · ${b.special.name}`;
   $('selSpDesc').textContent = b.special.desc;
   const bars = $('selBars');
   bars.innerHTML = '';
@@ -386,7 +387,10 @@ function startFight() {
   $('countBox').hidden = true;
   snd.init();
   snd.setCrowd(0.12);
-  announce(op.name, `"${op.nick}"`, 3.2);
+  $('vsP').textContent = pl.name; $('vsPn').textContent = `"${pl.nick}"`;
+  $('vsO').textContent = op.name; $('vsOn').textContent = `"${op.nick}"`;
+  $('vsNote').textContent = `${LEVELS[levelFor(run)].name} · ${run.kind === 'gauntlet' ? `도장 깨기 ${run.stage + 1} / ${run.order.length}` : '단판 승부'} · Space 건너뛰기`;
+  $('vs').hidden = false;
   setTaunt('', 0);
 }
 function beginRoundOne() {
@@ -397,6 +401,7 @@ function beginRoundOne() {
   snd.bell(1);
   snd.setCrowd(0.45);
   snd.roar(1);
+  $('vs').hidden = true;
   announce('FIGHT', '', 0.9);
   lockMouse();
 }
@@ -426,7 +431,7 @@ function announce(big, small = '', sec = 1.2) {
 function popup(t, color) {
   const a = $('popup');
   a.textContent = t;
-  a.style.color = color || '';
+  a.classList.toggle('bad', !!color && color !== '#9d9b96');
   a.classList.remove('show');
   void a.offsetWidth;
   a.classList.add('show');
@@ -710,10 +715,11 @@ function updateHud(dt) {
   $('stP').parentElement.classList.toggle('low', a.st < 15);
   const clock = Math.ceil(s.clock);
   $('hudClock').textContent = s.phase === 'rest' ? Math.ceil(s.rest) : clock;
-  $('hudRound').textContent = s.phase === 'rest' ? '휴식' : `ROUND ${s.round} / ${ROUNDS}`;
+  $('hudRound').textContent = s.phase === 'rest' ? 'REST' : `ROUND ${s.round} / ${ROUNDS}`;
   document.querySelector('.clock').classList.toggle('hot', s.phase === 'fight' && clock <= 10);
   const sp = $('spP');
-  sp.textContent = a.spCd > 0 ? `F ${a.def.special.name} ${Math.ceil(a.spCd)}` : `F ${a.def.special.name}`;
+  const spKey = keyLabel(SC().special[0]);
+  sp.textContent = a.spCd > 0 ? `${spKey} ${a.def.special.name} ${Math.ceil(a.spCd)}` : `${spKey} ${a.def.special.name}`;
   sp.classList.toggle('ready', a.spCd <= 0);
   $('corner').classList.toggle('show', s.phase === 'fight' && cornered(s, 0));
   if (app.tauntT > 0) {
@@ -731,7 +737,8 @@ function updateHud(dt) {
     const c = s.count;
     $('countNum').textContent = c.n || 1;
     if (c.who === 0) {
-      $('countMsg').textContent = 'A D 번갈아 연타!';
+      const pk = Object.keys(SC().punch).slice(0, 2).map(keyLabel).join(' ');
+      $('countMsg').textContent = `${pk} 번갈아 연타!`;
       $('countGauge').hidden = false;
       $('countFill').style.transform = `scaleX(${clamp(c.fill / c.need, 0, 1)})`;
     } else {
@@ -869,10 +876,11 @@ function fightFrame(realDt) {
   // 상대 쪽을 본다. 위를 올려다본다. 맞으면 시선이 튄다
   const opH = opp.def.h;
   targetHead.copy(rig.headWorld);
+  // 다운되면 바닥에서 나를 내려다보는 상대를 올려다본다
   lookAt.set(
-    rig.headWorld.x * 0.55,
-    (opH * 0.8 + (head.y * 0.4)) * (1 - D) + D * (opH * 0.8 + 1.8),
-    s.pb
+    rig.headWorld.x * 0.55 * (1 - D) + rig.headWorld.x * D,
+    (opH * 0.8 + (head.y * 0.4)) * (1 - D) + D * (rig.headWorld.y + 0.25),
+    s.pb * (1 - D) + rig.headWorld.z * D
   );
   // 위빙해도 시선은 상대에게 붙어 있어야 한다
   camera.up.set(0, 1, 0);
@@ -881,7 +889,7 @@ function fightFrame(realDt) {
   camera.rotateZ(roll + R.z * 0.028);
   camera.rotateX(R.x * 0.022 + ny * shake * 0.008);
   camera.rotateY(R.y * 0.024 + nx * shake * 0.008);
-  if (D > 0.01) camera.rotateZ(D * 0.55);
+  if (D > 0.01) camera.rotateZ(D * 0.22);
 
   const closeness = clamp((1.45 - dist) / 0.67, 0, 1);
   let fov = 61 - closeness * 7 - fx.zoom * 6 - corner * 3; // 붙을수록 좁혀서 상대가 화면을 채운다
@@ -896,7 +904,9 @@ function fightFrame(realDt) {
   const camW = camera.getWorldPosition(new THREE.Vector3());
   // 조준 고정 뒤에는 주먹이 고정된 자리로 간다 (복서 기준 aimX는 내 x와 같은 축)
   const down = s.phase === 'count' && s.count?.who === 1 || (s.phase === 'over' && s.result?.winner === 0 && s.result?.how !== '판정');
-  rig.update(animDt, opp, { z: s.pb, target: camW, down, idle: false });
+  // 내가 다운되면 상대는 한 걸음 다가와 위에서 내려다본다
+  const standOver = D > 0.05 ? Math.max(s.pb, s.pa - 1.05) * D + s.pb * (1 - D) : s.pb;
+  rig.update(animDt, opp, { z: standOver, target: camW, down, idle: false });
   arms.update(animDt, me, camera, rig.headWorld);
   parts.update(realDt);
   updateWorld(world, realDt, fx.crowd, s.pb, s.pa);

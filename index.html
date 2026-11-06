@@ -9,7 +9,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23050507'/><path d='M3 3 L16 16 L3 29 M29 3 L16 16 L29 29' stroke='%23e0312c' stroke-width='4' fill='none'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./css/style.css">
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
 </head>
@@ -76,10 +76,15 @@
 <section id="hud" class="hud" hidden>
   <div class="bars-top">
     <div class="pl"><b id="hudP"></b><div class="bar hp"><i id="hpPw" class="wash"></i><i id="hpP"></i></div><div class="bar st"><i id="stP"></i></div><div id="spP" class="sp-chip"></div></div>
-    <div class="clock"><span id="hudRound"></span><b id="hudClock"></b></div>
+    <div class="clock"><b id="hudClock"></b><span id="hudRound"></span></div>
     <div class="pr"><b id="hudO"></b><div class="bar hp"><i id="hpOw" class="wash"></i><i id="hpO"></i></div><div class="bar st"><i id="stO"></i></div></div>
   </div>
-  <div id="kds" class="kds"></div>
+  <div id="vs" class="vs" hidden>
+    <div class="vs-side me"><span>RED CORNER</span><b id="vsP"></b><i id="vsPn"></i></div>
+    <div class="vs-mid">VS</div>
+    <div class="vs-side op"><span>BLUE CORNER</span><b id="vsO"></b><i id="vsOn"></i></div>
+    <p id="vsNote" class="vs-note"></p>
+  </div>
   <div id="announce" class="announce"></div>
   <div id="popup" class="popup"></div>
   <div id="taunt" class="taunt"></div>
