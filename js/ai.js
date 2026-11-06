@@ -193,14 +193,13 @@ export function humanBotInput(bot, s, dt) {
   bot.next -= dt;
   if (bot.next <= 0 && !me.punch && me.st > 15) {
     bot.next = 0.35 + bot.rng() * 0.6;
-    if (d > 1.3) inp.step = 1;
-    else {
-      const r = bot.rng();
-      const hand = bot.rng() < 0.5 ? 'L' : 'R';
-      inp.punch = { hand, mod: r < 0.55 ? null : r < 0.8 ? 'hook' : r < 0.92 ? 'upper' : 'body' };
-    }
+    // 실제 조작과 같게: 주먹 두 개, 피하면서 치면 훅, 숙이면 어퍼. 몸통은 없다
+    const r = bot.rng();
+    const hand = bot.rng() < 0.5 ? 'L' : 'R';
+    inp.punch = { hand, mod: r < 0.6 ? null : r < 0.85 ? 'hook' : 'upper' };
   }
   if (me.spCd <= 0 && bot.rng() < 0.01) inp.special = true;
-  if (s.pa > 2.6 && bot.rng() < 0.02) inp.step = 1;
+  // 이동은 화면 쪽(main.js)과 같은 자동 걷기
+  inp.walk = s.phase !== 'fight' || inp.guard ? 0 : s.pa > 2.75 ? 0.7 : d > 1.0 ? 0.6 : 0;
   return inp;
 }

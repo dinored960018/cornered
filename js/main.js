@@ -4,7 +4,7 @@ import { BOXERS, LEVELS, byId } from './roster.js';
 import { createFight, stepFight, drainEvents, emptyInput, cornered, updateHead, ROUNDS, COUNT_STEP, CORNER, LIM } from './fight.js';
 import { HostLink, GuestLink } from './net.js';
 import { Rig, PlayerArms } from './rig.js';
-import { buildWorld, updateWorld, Particles, Post } from './world.js';
+import { buildWorld, updateWorld, Particles, Impacts, Post } from './world.js';
 import { Sound } from './audio.js';
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +37,7 @@ const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.03, 9
 scene.add(camera);
 const world = buildWorld(scene);
 const parts = new Particles(scene);
+const impacts = new Impacts(scene);
 const post = new Post(renderer);
 const snd = new Sound();
 
@@ -622,7 +623,7 @@ const v = (x, y, z) => new THREE.Vector3(x, y, z);
 /* ---------- 경기 이벤트를 연출로 ---------- */
 function handleEvent(e) {
   const s = app.s, fx = app.fx;
-  const rig = app.rig;
+  const rig = app.rig, arms = app.arms;
   const opp = s.f[1];
   switch (e.type) {
     case 'throw':
@@ -646,12 +647,17 @@ function handleEvent(e) {
         fx.flash = Math.max(fx.flash, 0.05);
         fx.shake = Math.max(fx.shake, 0.35);
       } else {
-        rig.hit(-1, 0, 0);
+        rig.hit(-1.6, (e.hand === 'R' ? 1 : -1) * 1.2, 0);
+        const g = headOf(); g.y -= 0.22;
+        impacts.spawn(g.lerp(camera.getWorldPosition(new THREE.Vector3()), 0.2), { kind: 'ring', size: 0.08, life: 0.16, grow: 2.6, color: 0x9fc6ff, alpha: 0.6 });
+        app.hitstop = Math.max(app.hitstop, 0.02);
+        arms.squash(e.hand, 0.4);
       }
       break;
     case 'parry':
       snd.parry();
       if (e.who === 0) {
+        { const g = headOf(); g.y -= 0.1; impacts.spawn(g.lerp(camera.getWorldPosition(new THREE.Vector3()), 0.55), { kind: 'star', size: 0.16, life: 0.16, grow: 1.6, color: 0xffcf4a }); }
         popup('패리');
         app.slow = Math.max(app.slow, 0.22);
         fx.flash = Math.max(fx.flash, 0.1);
@@ -724,6 +730,8 @@ function handleEvent(e) {
       app.slow = 0.75;
       if (e.who === 0) { fx.ring = 1; fx.muffle = 1; setTaunt(randOf(opp.def.taunts), 2.6); }
       announce('DOWN', '', 1);
+      fx.zoom = 1.4;
+      if (e.who === 1) { const g = headOf(); impacts.spawn(g, { kind: 'ring', size: 0.3, life: 0.5, grow: 5, color: 0xffffff, alpha: 0.7 }); }
       app.mashLast = null;
       break;
     case 'rise':
@@ -742,7 +750,9 @@ function handleEvent(e) {
       else { announce(`ROUND ${e.round}`, '', 1.2); snd.roar(0.8); }
       break;
     case 'over':
-      setTimeout(() => showResult(), e.how === '판정' ? 1500 : 2200);
+      setTimeout(() => showResult(), e.how === '판정' ? 1500 : 2600);
+      // 끝내는 한 방은 길게 느리게 보여 준다
+      if (e.how !== '판정') { app.slow = Math.max(app.slow, 1.3); fx.zoom = 1.6; fx.flash = Math.max(fx.flash, 0.5); }
       if (e.winner === 0) { snd.roar(1.8); }
       announce(e.how === '판정' ? '판정' : e.how, '', 1.8);
       break;
@@ -765,7 +775,6 @@ function onPlayerHit(e) {
   fx.shake = Math.max(fx.shake, 0.4 + power);
   fx.muffle = Math.max(fx.muffle, power * 0.62);
   fx.ring = Math.max(fx.ring, power > 0.75 ? power * 0.7 : 0);
-  if (power > 0.7) app.hitstop = 0.05 + power * 0.04;
   const side = fromLeft ? 1 : -1;
   switch (e.kind) {
     case 'hook': camKick(1, -6.4 * side * power * -1, 4.4 * side * power, 0.5, 2.1 * side * power); break;
@@ -773,8 +782,11 @@ function onPlayerHit(e) {
     case 'body': camKick(-4.8 * power, 0, 0.9 * side, 0.4, 0, -1 * power); snd.breath(1, false); break;
     default: camKick(4.8 * power, 1.1 * side * power, 1.2 * side * power, 2.1 * power); break;
   }
-  // 얼굴 쪽으로 튀는 내 땀과 피
+  // 얼굴 쪽으로 튀는 내 땀과 피, 그리고 주먹이 들어온 쪽에서 번쩍
   const camP = camera.getWorldPosition(new THREE.Vector3());
+  const from = e.kind === 'hook' ? (fromLeft ? -0.2 : 0.2) : (fromLeft ? -0.06 : 0.06);
+  impacts.spawn(camera.localToWorld(new THREE.Vector3(from, e.kind === 'body' ? -0.24 : e.kind === 'upper' ? -0.1 : 0, -0.32)), { kind: 'star', size: 0.12 + power * 0.14, life: 0.08 + power * 0.04, grow: 1.2, color: 0xfff0dd });
+  app.hitstop = Math.max(app.hitstop, 0.025 + power * 0.04);
   const front = new THREE.Vector3(0, 0.1, -1);
   parts.burst(camP.clone().add(new THREE.Vector3(0, 0.02, -0.42)), front, 8 + power * 14, power > 0.7 ? 'blood' : 'sweat');
   if (e.counter && power > 0.6) popup('카운터 맞음', '#ff5a3c');
@@ -789,7 +801,8 @@ function onOppHit(e) {
   const fx = app.fx;
   const power = clamp(e.dmg / 13, 0.2, 1.8);
   const rig = app.rig;
-  snd.landHit(Math.min(1, power));
+  snd.landHit(Math.min(1, power), e.counter);
+  const arms = app.arms;
   fx.shake = Math.max(fx.shake, 0.12 + power * 0.28);
   fx.flash = Math.max(fx.flash, power > 1.2 ? 0.16 : 0.015);
   const sgn = e.hand === 'R' ? 1 : -1;
@@ -802,8 +815,17 @@ function onOppHit(e) {
   const head = headOf();
   const dir = new THREE.Vector3(sgn * 0.45, 0.4, -0.75).normalize();
   if (e.kind === 'body') head.y -= 0.5;
-  parts.burst(head, dir, 8 + power * 18, power > 0.75 && e.kind !== 'body' ? 'blood' : 'sweat');
-  if (power > 0.75) { app.hitstop = 0.035 + power * 0.03; camKick(-0.5 * power, sgn * 0.8 * power, 0); }
+  // 섬광은 얼굴 앞쪽(나와 가까운 쪽)에, 훅은 옆에서 들어간 자리에
+  const camP = camera.getWorldPosition(new THREE.Vector3());
+  const spot = head.clone().lerp(camP, 0.12);
+  if (e.kind === 'hook') spot.x += sgn * 0.07;
+  if (e.kind === 'upper') spot.y -= 0.08;
+  impacts.hit(spot, power * (e.counter ? 1.3 : 1), { color: e.counter ? 0xffd68a : 0xffffff });
+  parts.burst(head, dir, 10 + power * 22, power > 1.05 && e.kind !== 'body' ? 'blood' : 'sweat');
+  // 모든 타격에 아주 짧게 멈춘다. 세게 맞힐수록 길게. 이게 손맛의 대부분이다
+  app.hitstop = Math.max(app.hitstop, 0.03 + power * 0.045 + (e.counter ? 0.03 : 0));
+  arms.squash(e.hand, power);
+  camKick(-0.6 * power, sgn * 0.9 * power, 0, -0.6 * power);
   if (e.gamble === 'win') { announce('대박', '', 0.9); snd.roar(1.2); }
   else if (e.gamble === 'lose') popup('꽝', '#9d9b96');
   else if (e.crit) popup('럭키 펀치');
@@ -1006,6 +1028,16 @@ function fightView(realDt) {
   const me = s.f[0], opp = s.f[1];
   const dt = app.hitstop > 0 ? 0 : app.slow > 0 ? realDt * 0.28 : realDt;
 
+  // 내 주먹이 뻗는 순간: 시선이 살짝 앞으로 들어가고 어깨 쪽으로 돈다
+  const mp = me.punch;
+  // 온라인 손님은 스냅숏마다 펀치 객체가 바뀌므로 던진 횟수로 같은 펀치인지 본다
+  if (mp && app.struck !== me.thrown && mp.t >= mp.w) {
+    app.struck = me.thrown;
+    const sg = mp.hand === 'R' ? 1 : -1;
+    const pw = { jab: 0.45, cross: 1, hook: 1.25, upper: 1, body: 0.8 }[mp.id] || 0.6;
+    camKick(mp.id === 'upper' ? 1.2 : mp.id === 'body' ? -1.2 : 0.2, sg * 1.5 * pw, -sg * 1.2 * pw, -2.4 * pw);
+    snd.whoosh(sg * 0.25, 0.1 + pw * 0.1);
+  }
   // 마우스로 기울인 머리는 서서히 가운데로 돌아온다
   app.lean = damp(app.lean, 0, 14, realDt);
   app.leanMouse = damp(app.leanMouse, 0, 1.6, realDt);
@@ -1101,6 +1133,7 @@ function fightView(realDt) {
   rig.update(animDt, opp, { z: standOver, target: camW, down, idle: false });
   arms.update(animDt, me, camera, rig.headWorld);
   parts.update(realDt);
+  impacts.update(realDt);
   updateWorld(world, realDt, fx.crowd, s.pb, s.pa);
 
   // 소리
@@ -1119,7 +1152,9 @@ function fightView(realDt) {
       app.heartT = period;
       if (danger > 0.12 || app.mode === 'intro') snd.heart(danger);
     }
-    const ph = 1 - app.heartT / period;
+    // 심장이 갑자기 빨라지면 남은 시간이 한 박보다 길어져 값이 터진다. 한 박 안으로 묶는다
+    app.heartT = Math.min(app.heartT, period);
+    const ph = clamp(1 - app.heartT / period, 0, 1);
     pulse = Math.exp(-ph * 9) + Math.exp(-Math.max(0, ph - 0.28) * 10) * 0.65 * (ph > 0.28 ? 1 : 0);
     pulse *= danger;
   }
@@ -1136,8 +1171,8 @@ function fightView(realDt) {
   U.flash.value = fx.flash;
   U.aberr.value = fx.aberr + (1 - hp) * 0.18 + fx.stunBlur * 0.7;
   U.radial.value = fx.radial + fx.stunBlur * 0.25;
-  U.tunnel.value = clamp(0.2 + (1 - hp) * 0.55 + corner * 0.42 + closeness * 0.08, 0, 1);
-  U.desat.value = clamp(0.08 + (1 - hp) * 0.46 + corner * 0.12, 0, 0.8);
+  U.tunnel.value = clamp(0.2 + (1 - hp) * 0.5 + corner * 0.38 + closeness * 0.08, 0, 0.82); // 아무리 몰려도 상대는 보여야 한다
+  U.desat.value = clamp(0.08 + (1 - hp) * 0.42 + corner * 0.12, 0, 0.6);
   U.red.value = clamp(fx.red + corner * 0.1, 0, 1);
   U.blind.value = me.blind > 0 ? clamp(me.blind / 1.2, 0, 1) : damp(U.blind.value, 0, 8, realDt);
   U.pulse.value = pulse;
@@ -1191,4 +1226,4 @@ if (roomCode) { history.replaceState(null, '', location.pathname); joinRoom(room
 requestAnimationFrame(frame);
 
 // 자동 테스트와 연출 확인용
-window.__c = { app, keys, perf, setScheme, startFight, BOXERS, getRig, snd, post, camera, COUNT_STEP };
+window.__c = { app, keys, perf, setScheme, startFight, BOXERS, getRig, snd, post, camera, COUNT_STEP, impacts, handleEvent: (e) => handleEvent(e) };

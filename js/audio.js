@@ -131,8 +131,12 @@ export class Sound {
   }
 
   /** 내 주먹이 꽂히는 소리 */
-  landHit(power) {
+  landHit(power, counter = false) {
+    // 낮은 쿵 + 가죽이 살에 박히는 찰싹 + (세면) 뼈 울림
     this.tone({ f: 120, to: 50, peak: 0.55 + power * 0.3, d: 0.11 + power * 0.06 });
+    this.tone({ f: 58, to: 30, peak: 0.25 + power * 0.45, d: 0.18 + power * 0.1 });
+    if (power > 0.8 || counter) this.noiseHit({ f: 5200, q: 4, peak: 0.16 + power * 0.1, d: 0.025 });
+    if (counter) this.tone({ f: 340, to: 120, type: 'triangle', peak: 0.22, d: 0.09 });
     this.noiseHit({ f: 1700, q: 0.7, peak: 0.42 + power * 0.25, d: 0.05, sweep: 0.4 });
     this.noiseHit({ f: 3800, q: 1.5, peak: 0.1 + power * 0.12, d: 0.03 });
   }

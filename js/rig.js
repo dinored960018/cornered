@@ -898,7 +898,9 @@ export class Rig {
         const id = q.id;
         // 칠 곳
         const aim = T.c.copy(o.target);
-        aim.z -= 0.14;
+        // 카메라 안으로 파고들지 않게 얼굴 앞에서 멈춘다 (막혔으면 내 글러브 앞에서)
+        // 시야가 좁아서 가까이 오면 글러브가 화면을 다 덮는다. 45cm 앞에서 멈춘다
+        aim.z -= q.landed === 'block' || q.landed === 'parry' ? 0.5 : 0.45;
         if (id === 'body') aim.y -= 0.52;
         if (q.latched) {
           // 조준 고정 뒤에는 플레이어의 지금 머리가 아니라 고정된 자리로 간다
@@ -926,7 +928,15 @@ export class Rig {
           const a0 = wind.clone().lerp(ctrl, u), a1 = ctrl.clone().lerp(end, u);
           out.copy(a0.lerp(a1, u));
         }
-        if (rp > 0) out.copy(end).lerp(gt, smooth(rp));
+        if (rp > 0) {
+          out.copy(end).lerp(gt, smooth(rp));
+          // 피했으면 주먹이 귀 옆으로 지나간다
+          if (q.landed === 'slip' || q.landed === 'out') {
+            const ov = Math.sin(Math.min(1, rp * 1.7) * Math.PI) * (q.landed === 'slip' ? 0.3 : 0.12);
+            out.z += ov;
+            out.x += (id === 'hook' ? -sx : 0) * ov * 0.8;
+          }
+        }
         if (!this.handInit) hp.copy(out);
         // 예비동작은 부드럽게, 휘두를 때는 그대로 따라간다
         hp.lerp(out, tp > 0 && rp <= 0 ? 1 : 1 - Math.exp(-dt * 34));
@@ -998,7 +1008,11 @@ export class PlayerArms {
     for (const a of Object.values(this.arms)) a.glove.scale.setScalar(0.82);
     this.t = 0;
     this.tmp = { s: v3(), e: v3(), w: v3() };
+    this.sq = { L: 0, R: 0 };
   }
+
+  /** 주먹이 꽂힐 때 글러브가 납작해졌다 돌아온다 (글러브는 -Y 쪽으로 뻗는다) */
+  squash(hand, power) { if (this.sq[hand] !== undefined) this.sq[hand] = Math.min(1, 0.4 + power * 0.5); }
 
   /** 카메라 좌표에서 움직인다. 오른쪽이 +X, 앞이 -Z */
   update(dt, f, camera, oppHead) {
@@ -1025,6 +1039,7 @@ export class PlayerArms {
         const tp = clamp01((q.t - q.w) / q.tt);
         const rp = clamp01((q.t - q.w - q.tt) / Math.max(0.01, q.r));
         const end = local.clone();
+        end.z += 0.13; // 머리 한가운데가 아니라 얼굴 표면까지
         if (q.id === 'body') end.y -= 0.5;
         if (q.id === 'upper') end.y -= 0.08;
         // 거리가 멀면 닿는 데까지만 뻗는다
@@ -1045,7 +1060,18 @@ export class PlayerArms {
           if (q.id === 'upper') { ctrl.y -= 0.1; }
           out.copy(wind.clone().lerp(ctrl, u).lerp(ctrl.clone().lerp(end, u), u));
         }
-        if (rp > 0) out.copy(end).lerp(gt, smooth(rp));
+        if (rp > 0) {
+          out.copy(end).lerp(gt, smooth(rp));
+          if (q.landed === 'slip' || q.landed === 'out') {
+            // 헛친 주먹은 앞으로 쏠렸다가 돌아온다
+            const ov = Math.sin(Math.min(1, rp * 1.7) * Math.PI) * 0.16;
+            out.z -= ov;
+            out.x -= sx * ov * 0.4;
+          } else if (q.landed === 'hit') {
+            // 꽂힌 주먹은 반동으로 빨리 튕겨 나온다
+            out.z += Math.sin(Math.min(1, rp * 2.5) * Math.PI) * 0.05;
+          }
+        }
         hp.lerp(out, tp > 0 && rp <= 0 ? 1 : 1 - Math.exp(-dt * 38));
       } else {
         hp.lerp(gt, 1 - Math.exp(-dt * 16));
@@ -1057,6 +1083,11 @@ export class PlayerArms {
       const dir = v3().subVectors(this.tmp.w, this.tmp.e).normalize();
       dir.y += q ? 0 : 0.35; dir.z -= q ? 0 : 0.5; dir.normalize();
       place(a.glove, this.tmp.w, this.tmp.w.clone().add(dir), v3(0, 1, 0.1));
+      const sq = this.sq[hand];
+      if (sq > 0.001) {
+        a.glove.scale.set(0.82 * (1 + sq * 0.16), 0.82 * (1 - sq * 0.26), 0.82 * (1 + sq * 0.16));
+        this.sq[hand] = sq * Math.exp(-dt * 16);
+      } else a.glove.scale.setScalar(0.82);
     }
   }
 }

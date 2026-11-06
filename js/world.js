@@ -310,7 +310,18 @@ export class Particles {
     g.setAttribute('position', new THREE.BufferAttribute(this.p, 3));
     g.setAttribute('color', new THREE.BufferAttribute(this.c, 3));
     this.geo = g;
-    this.m = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.019, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true }));
+    // 네모난 점 대신 둥근 물방울
+    const dot = document.createElement('canvas');
+    dot.width = dot.height = 32;
+    const dx = dot.getContext('2d');
+    const dg = dx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    dg.addColorStop(0, 'rgba(255,255,255,1)');
+    dg.addColorStop(0.45, 'rgba(255,255,255,.85)');
+    dg.addColorStop(1, 'rgba(255,255,255,0)');
+    dx.fillStyle = dg;
+    dx.fillRect(0, 0, 32, 32);
+    const dotTex = new THREE.CanvasTexture(dot);
+    this.m = new THREE.Points(g, new THREE.PointsMaterial({ size: 0.024, map: dotTex, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true, alphaTest: 0.02 }));
     this.m.frustumCulled = false;
     scene.add(this.m);
     this.p.fill(-100);
@@ -328,8 +339,8 @@ export class Particles {
       this.v[i * 3 + 1] = dir.y * sp + (Math.random() - 0.2) * 1.7;
       this.v[i * 3 + 2] = dir.z * sp + (Math.random() - 0.5) * 1.8;
       this.life[i] = 0.5 + Math.random() * 0.6;
-      if (kind === 'blood') { this.c[i * 3] = 0.42; this.c[i * 3 + 1] = 0.018; this.c[i * 3 + 2] = 0.01; }
-      else { this.c[i * 3] = 0.82; this.c[i * 3 + 1] = 0.84; this.c[i * 3 + 2] = 0.88; }
+      if (kind === 'blood' && Math.random() < 0.55) { this.c[i * 3] = 0.42; this.c[i * 3 + 1] = 0.018; this.c[i * 3 + 2] = 0.01; }
+      else { const b = 0.75 + Math.random() * 0.25; this.c[i * 3] = b; this.c[i * 3 + 1] = b; this.c[i * 3 + 2] = b * 1.04; }
     }
   }
 
@@ -345,6 +356,118 @@ export class Particles {
     }
     this.geo.attributes.position.needsUpdate = true;
     this.geo.attributes.color.needsUpdate = true;
+  }
+}
+
+/* ---------- 타격 이펙트: 맞는 자리에 번쩍이는 섬광과 퍼지는 충격파 ---------- */
+function fxTexture(draw) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  draw(c.getContext('2d'), 64);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const FX_TEX = {};
+function fxTex(kind) {
+  if (FX_TEX[kind]) return FX_TEX[kind];
+  if (kind === 'star') {
+    FX_TEX.star = fxTexture((x, r) => {
+      const g = x.createRadialGradient(r, r, 0, r, r, r);
+      g.addColorStop(0, 'rgba(255,255,255,1)');
+      g.addColorStop(0.18, 'rgba(255,244,214,.9)');
+      g.addColorStop(0.5, 'rgba(255,190,120,.25)');
+      g.addColorStop(1, 'rgba(255,160,90,0)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, r * 2, r * 2);
+      // 뾰족한 빛살
+      x.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2 + (i % 2) * 0.2;
+        const len = r * (i % 2 ? 0.62 : 0.98);
+        x.beginPath();
+        x.moveTo(r + Math.cos(a - 0.09) * 6, r + Math.sin(a - 0.09) * 6);
+        x.lineTo(r + Math.cos(a) * len, r + Math.sin(a) * len);
+        x.lineTo(r + Math.cos(a + 0.09) * 6, r + Math.sin(a + 0.09) * 6);
+        x.closePath();
+        x.fillStyle = 'rgba(255,248,230,.85)';
+        x.fill();
+      }
+    });
+  } else if (kind === 'ring') {
+    FX_TEX.ring = fxTexture((x, r) => {
+      const g = x.createRadialGradient(r, r, r * 0.55, r, r, r);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(0.72, 'rgba(255,255,255,.75)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = g;
+      x.fillRect(0, 0, r * 2, r * 2);
+    });
+  } else {
+    // 땀이 튀는 물보라: 부드러운 점 여러 개
+    FX_TEX.mist = fxTexture((x, r) => {
+      for (let i = 0; i < 40; i++) {
+        const a = Math.random() * Math.PI * 2, d = Math.random() * r * 0.8, s = 2 + Math.random() * 7;
+        const g = x.createRadialGradient(r + Math.cos(a) * d, r + Math.sin(a) * d, 0, r + Math.cos(a) * d, r + Math.sin(a) * d, s);
+        g.addColorStop(0, 'rgba(255,255,255,.7)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = g;
+        x.fillRect(0, 0, r * 2, r * 2);
+      }
+    });
+  }
+  return FX_TEX[kind];
+}
+
+export class Impacts {
+  constructor(scene, count = 28) {
+    this.list = [];
+    for (let i = 0; i < count; i++) {
+      const m = new THREE.SpriteMaterial({ map: fxTex('star'), transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending, opacity: 0 });
+      const s = new THREE.Sprite(m);
+      s.visible = false;
+      s.renderOrder = 20;
+      s.frustumCulled = false;
+      scene.add(s);
+      this.list.push({ s, t: 0, life: 0, size: 0, grow: 0, spin: 0, alpha: 1 });
+    }
+    this.i = 0;
+  }
+
+  /** kind: star(섬광) | ring(충격파) | mist(땀 물보라) */
+  spawn(pos, { kind = 'star', size = 0.3, life = 0.13, grow = 1.6, color = 0xffffff, alpha = 1, spin = 0 } = {}) {
+    const e = this.list[this.i];
+    this.i = (this.i + 1) % this.list.length;
+    e.s.material.map = fxTex(kind);
+    e.s.material.color.setHex(color);
+    e.s.material.blending = kind === 'mist' ? THREE.NormalBlending : THREE.AdditiveBlending;
+    e.s.material.needsUpdate = true;
+    e.s.material.rotation = Math.random() * Math.PI * 2;
+    e.s.position.copy(pos);
+    e.s.visible = true;
+    Object.assign(e, { t: 0, life, size, grow, spin, alpha });
+    this.update(0);
+  }
+
+  /** 한 번에 섬광 + 충격파 + 물보라 */
+  hit(pos, power, { color = 0xffffff, mist = true } = {}) {
+    const p = Math.min(1.6, power);
+    this.spawn(pos, { kind: 'star', size: 0.16 + p * 0.2, life: 0.09 + p * 0.05, grow: 1.1, color, spin: 3 });
+    this.spawn(pos, { kind: 'ring', size: 0.1 + p * 0.08, life: 0.18 + p * 0.08, grow: 3.4 + p * 2, color, alpha: 0.55 + p * 0.2 });
+    if (mist && p > 0.9) this.spawn(pos, { kind: 'mist', size: 0.08 + p * 0.06, life: 0.22, grow: 1.8, color: 0xffffff, alpha: 0.35 });
+  }
+
+  update(dt) {
+    for (const e of this.list) {
+      if (!e.s.visible) continue;
+      e.t += dt;
+      const u = e.t / e.life;
+      if (u >= 1) { e.s.visible = false; continue; }
+      const out = 1 - Math.pow(1 - u, 3);
+      e.s.scale.setScalar(e.size * (0.45 + e.grow * out));
+      e.s.material.opacity = e.alpha * Math.pow(1 - u, 1.6);
+      e.s.material.rotation += e.spin * dt;
+    }
   }
 }
 
@@ -398,12 +521,12 @@ void main(){
   col = mix(col, vec3(l)*vec3(1.04,.97,.93), desat);
   col = pow(col, vec3(1.0 + tunnel*0.55)); // 몰릴수록 어두운 곳을 더 어둡게
   // 터널 시야
-  float vr = mix(0.86, 0.36, tunnel) - pulse*0.045*tunnel;
+  float vr = mix(0.9, 0.5, tunnel) - pulse*0.045*tunnel; // 몰려도 가운데는 넉넉히 보이게
   float vig = smoothstep(vr, vr+0.56, r);
-  col *= 1.0 - vig*(0.72+0.26*tunnel);
+  col *= 1.0 - vig*(0.6+0.22*tunnel);
   // 가장자리 핏빛
   float rv = smoothstep(0.32, 0.94, r + (rnd(floor(uv*7.)+0.)*0.02));
-  col = mix(col, col*vec3(.55,.05,.04)+vec3(.09,.0,.0), clamp(red*rv*(0.75+pulse*0.35),0.,1.));
+  col = mix(col, col*vec3(.55,.05,.04)+vec3(.09,.0,.0), clamp(red*rv*(0.6+pulse*0.3),0.,0.7));
   // 맞는 순간
   col += vec3(1.0,0.82,0.74)*flash*0.72;
   // 필름 노이즈

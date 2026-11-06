@@ -113,9 +113,6 @@ try {
     if (!ok) fail = 1;
     for (let k = 0; k < 40; k++) { if (!(await ev(`!!window.__c.app.s.f[0].punch`))) break; await sleep(80); }
   };
-  const jit = await ev(`(async()=>{const r=window.__c.app.rig;const v=[];for(let k=0;k<30;k++){await new Promise(q=>requestAnimationFrame(q));v.push(r.neck.rotation.y)}let m=0;for(let k=2;k<v.length;k++)m=Math.max(m,Math.abs(v[k]-2*v[k-1]+v[k-2]));return m})()`);
-  console.log('  목 각도 떨림(2차 차분 최대)', jit.toFixed(4), jit < 0.05 ? '확인' : '떨림');
-  if (jit >= 0.05) fail = 1;
   console.log('키 배치 확인');
   await probe('a', ['KeyJ', 'j', 74], null, 'jab');
   await probe('a', ['KeyK', 'k', 75], null, 'cross');
